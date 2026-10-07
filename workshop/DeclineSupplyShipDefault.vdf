@@ -1,0 +1,36 @@
+"workshopitem"
+{
+	"appid"		"2489330"
+	"publishedfileid"		"3814971435"
+	"contentfolder"		"E:\modding\whiskerwood-declinesupplyshipdefault\workshop\content"
+	"previewfile"		"E:\modding\whiskerwood-declinesupplyshipdefault\docs\screenshot.png"
+	"title"		"DeclineSupplyShipDefault - Refuse supplies by default"
+	"description"		"[b]No more accidental supply debt.[/b]
+
+When the Claws' supply ship docks, the game pre-selects the first supply crate, and every crate adds debt that you owe at the next tax collection. One click on Unload Shipment out of habit, and the debt is yours.
+
+With this mod [b]Refuse supplies[/b] is selected instead as soon as the supply ship arrives: [i]New debts: 0[/i], and the button reads [b]Reject Shipment[/b]. Want a crate? Open the ship and pick one, exactly as before.
+
+[h2]Features[/h2]
+[list]
+[*]Refuse supplies is the default choice of every new supply ship
+[*]You can still pick any crate yourself
+[*]Uses the game's own crate selection, the same as clicking Select on the Refuse supplies card
+[*]Only acts when a ship arrives: no checks while you play, no effect on performance
+[*]Mods menu option [i]Supply ship - Refuse supplies selected by default[/i] (On / Off)
+[/list]
+Refusing the shipment costs 1 standing with the Claws, the same as when you refuse it yourself.
+
+[h2]Known limitations[/h2]
+[list]
+[*]Tested on game version 0.7.207.
+[*]A supply ship that is already docked when you load a save is left as it is.
+[*]Only the crate-choice supply ship is changed; the starting supplies at the beginning of a game are not.
+[/list]
+
+[h2]Source[/h2]
+[url=https://github.com/ringuh/whiskerwood-declinesupplyshipdefault]GitHub[/url]
+
+Created using the [url=https://github.com/Whiskerwood-Modding/Whiskerwood-Project]Whiskerwood modkit[/url]."
+	"changenote"		"1.0: first release."
+}

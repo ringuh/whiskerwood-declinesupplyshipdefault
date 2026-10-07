@@ -1,0 +1,7 @@
+{
+	"Name": "DeclineSupplyShipDefault",
+	"Description": "When the Claws' supply ship docks, Refuse supplies is selected instead of a supply crate, so no new debt is added unless you pick a crate yourself. Mods menu option to switch it off.",
+	"Version": "1.0",
+	"CreatedBy": "rinku",
+	"EngineVersion": "5.8"
+}
