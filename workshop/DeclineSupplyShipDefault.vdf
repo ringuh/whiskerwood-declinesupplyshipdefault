@@ -4,7 +4,7 @@
 	"publishedfileid"		"3814971435"
 	"contentfolder"		"E:\modding\whiskerwood-declinesupplyshipdefault\workshop\content"
 	"previewfile"		"E:\modding\whiskerwood-declinesupplyshipdefault\docs\screenshot.png"
-	"title"		"DeclineSupplyShipDefault - Refuse supplies by default"
+	"title"		"Refuse supplies by default"
 	"description"		"[b]No more accidental supply debt.[/b]
 
 When the Claws' supply ship docks, the game pre-selects the first supply crate, and every crate adds debt that you owe at the next tax collection. One click on Unload Shipment out of habit, and the debt is yours.
