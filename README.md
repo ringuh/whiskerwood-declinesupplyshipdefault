@@ -84,12 +84,13 @@ Assets:
 | `ShipType` | Integer |
 | `Ready` | Boolean |
 | `SetupTries` | Integer |
+| `DockBound` | Boolean |
 
 If a red event wire (OnLoaded, OnShipChanged → its *Bind Event* node) pastes unconnected, drag it again.
 
 ### How it works
 
-- **Event:** at load the mod takes `ArcoSystems.GetArcoSys()` → `GetPrimaryDockActor()` → its `FactionDock` component and binds `DockedShipChanged(shipTypeAtDock)`, which fires when a ship arrives at (or leaves) the main dock. Nothing runs between ship arrivals: no tick, no polling. Only ship type 3 (`SUPPLY_SHIP_TRADE`, the crate ship) is handled.
+- **Event:** when a game starts or a save loads, the mod takes `ArcoSystems.GetArcoSys()` → `GetPrimaryDockActor()` → its `FactionDock` component and binds `DockedShipChanged(shipTypeAtDock)`, which fires when a ship arrives at (or leaves) the main dock. A new game starts without a main dock (the player places it first), so until the dock is found the mod checks again shortly after each building or construction site is placed and at each day start; once it is bound those checks stop. Nothing runs between ship arrivals: no tick, no polling. Only ship type 3 (`SUPPLY_SHIP_TRADE`, the crate ship) is handled.
 - **Reading the ship:** 0.5 game seconds after it docks, `ArcoSystems.GetCurrentlyDockedShipInfo()` → `asSupplyShip` (`SupplyShipState`): `choices` (each `SupplyShipChoice` has `isRejectChoice`) and `choiceIdx` (the selected one). If the choices aren't filled in yet, it checks again after 1 game second (at most 3 checks).
 - **Selecting:** the crate window class `DockedBoatPanel_SupplyTrader` handles the HUD action `chooseSupplyPackage` in its `ReceiveHudAction` (`paramInt` = choice index; the game turns it into its own "choose supply index" command, the same one the window's *Select* buttons use). The mod keeps one invisible instance of that class and sends `chooseSupplyPackage` with the index of the reject choice. (`DockedBoatPanel_Supplies` is the *starting supplies* window and doesn't know this action.)
 

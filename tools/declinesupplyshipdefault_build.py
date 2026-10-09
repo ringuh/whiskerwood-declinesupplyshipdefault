@@ -28,7 +28,7 @@ OUT = os.path.join(os.path.dirname(__file__), 'out')
 os.makedirs(OUT, exist_ok=True)
 MOD = 'DeclineSupplyShipDefault'
 VERSION = '1.1'
-BUILD = 'v9'
+BUILD = 'v10'
 TRACE = False   # True = ungated log lines (dev only, never in a release)
 DIAG = False    # True = v4-v7 diagnostics (panel pass-up log, panel class, 1 s re-read). Dev only.
 M = '/Game/Mods/%s/' % MOD
@@ -234,7 +234,7 @@ open(OUT + '/BP_Startup.txt', 'w', encoding='utf-8').write(g.text())
 # =========================================================================== BP_MapLoad
 # Variables: Debug (Boolean), Sys (Arco Systems ref), Panel (Docked Boat Panel Supplies ref),
 #            Choices (Supply Ship Choice ARRAY), CurIdx (Integer), RejectIdx (Integer), Tries (Integer),
-#            RetryPending (Boolean), ShipType (Integer), Ready (Boolean), SetupTries (Integer)  <- 1.1 setup guard
+#            RetryPending (Boolean), ShipType (Integer), Ready (Boolean), SetupTries (Integer), DockBound (Boolean)  <- 1.1
 g = Graph(MAPLOAD)
 
 # ---- BeginPlay: bind onLoadingFinished
@@ -249,28 +249,35 @@ else: ex(bp, b0)
 # ---- OnLoaded: Debug from debug.txt; Sys; FactionDock.DockedShipChanged -> OnShipChanged; invisible panel
 evS = g.custom_event('OnShipChanged', [('shipTypeAtDock', ENUM(PA + 'EShipType'))], 0, 600)
 # ---- Setup guard (1.1): a NEW game doesn't deliver onLoadingFinished to BP_MapLoad, so setup also runs from
-#      BeginPlay. BeginPlay (after the bind) and OnLoaded enter the same guard: Ready -> nothing; (player controller
-#      AND main dock's FactionDock there) OR 10 tries used -> Ready = true -> setup once; else one-shot 1 s timer
-#      back into OnLoaded. ('Tries' is the supply-choice retry counter, so the guard uses SetupTries.)
+#      BeginPlay. BeginPlay (after the binds) and OnLoaded enter the same guard: Ready -> nothing; no player
+#      controller yet -> SetupTries < 10 -> SetupTries++ -> one-shot 1 s timer back into OnLoaded; else
+#      Ready = true -> setup once (debug, Sys, invisible panel), then TRYDOCK.
+# ---- TRYDOCK (v10): a new game starts in the embark phase PLACE_DOCK, so there is no main dock until the player
+#      places it (v9 gave up after 10 s: "NO FactionDock found"). TRYDOCK binds FactionDock.DockedShipChanged once
+#      (DockBound). Entered from: setup; OnDay (ModAPI onDayStart); OnDockCheck = one-shot 0.5 s timer armed by
+#      ModAPI onBuildingSpawned / onConstructionSpawned while the dock isn't bound yet (the timer gives the game
+#      time to register the new dock). After the dock is bound every entry stops at the first Branch.
+evBS = g.custom_event('OnBuilt', [('Actor', ACTOR)], 0, -3200)
+evCS = g.custom_event('OnConstruction', [('Actor', ACTOR)], 0, -3000)
+evDY = g.custom_event('OnDay', [('day', INT)], 0, -2800)
+evDC = g.custom_event('OnDockCheck', [], 0, -2600)
+bb1 = bind(g, api['ReturnValue'], API, 'onBuildingSpawned', '/Script/SystemCore', 'ModAPI_OnActorSpawned__DelegateSignature', evBS, 700, -2000, 'BindBuilt'); ex(b0, bb1)
+bb2 = bind(g, api['ReturnValue'], API, 'onConstructionSpawned', '/Script/SystemCore', 'ModAPI_OnActorSpawned__DelegateSignature', evCS, 1000, -2000, 'BindConstruction'); ex(bb1, bb2)
+bb3 = bind(g, api['ReturnValue'], API, 'onDayStart', '/Script/SystemCore', 'ModAPI_OnDayStart__DelegateSignature', evDY, 1300, -2000, 'BindDay'); ex(bb2, bb3)
+
 gr = g.branch(-300, -900, 'BrReady'); link(g.get('Ready', BOOL, -450, -750, name='ReadyGet')['Ready'], gr['Condition'])
-ex(b0, gr); ex(evL, gr)
+ex(bb3, gr); ex(evL, gr)
 pcG = g.call(GS + ':GetPlayerController', 'PCGuard', -450, -600)
 pcv = g.call(KSL + ':IsValid', 'PCGuardValid', -250, -600); link(pcG['ReturnValue'], pcv['Object'])
-gsG = g.call(SYS + ':GetArcoSys', 'GuardSys', -650, -450)
-pdG = g.call(SYS + ':GetPrimaryDockActor', 'GuardMainDock', -450, -450); link(gsG['ReturnValue'], pdG['self'])
-fdG = g.call('/Script/Engine.Actor:GetComponentByClass', 'GuardFactionDock', -250, -450, ComponentClass=FDOCK)
-link(pdG['ReturnValue'], fdG['self']); fdG['ReturnValue'].t = FDOCK_T
-fdv = g.call(KSL + ':IsValid', 'GuardDockValid', -50, -450); link(fdG['ReturnValue'], fdv['Object'])
-both = g.call(KML + ':BooleanAND', 'GuardBoth', 100, -550); link(pcv['ReturnValue'], both['A']); link(fdv['ReturnValue'], both['B'])
-stg0 = g.get('SetupTries', INT, -250, -300, name='SetupTriesGet')
-used = g.call(KML + ':GreaterEqual_IntInt', 'SetupTriesUsed', -50, -300, B='10'); link(stg0['SetupTries'], used['A'])
-gok = g.call(KML + ':BooleanOR', 'GuardOk', 250, -450); link(both['ReturnValue'], gok['A']); link(used['ReturnValue'], gok['B'])
-gp = g.branch(-50, -900, 'BrCanSetup'); link(gok['ReturnValue'], gp['Condition']); ex(gr, gsG, 'else'); ex(gsG, gp)   # GetArcoSys is impure
+gp = g.branch(-50, -900, 'BrHavePC'); link(pcv['ReturnValue'], gp['Condition']); ex(gr, gp, 'else')
 srd = g.setv('Ready', BOOL, 150, -900, value='true', name='SetReady'); ex(gp, srd)
+stg0 = g.get('SetupTries', INT, -250, -300, name='SetupTriesGet')
+stl = g.call(KML + ':Less_IntInt', 'SetupTriesLeft', -50, -300, B='10'); link(stg0['SetupTries'], stl['A'])
+bst = g.branch(150, -700, 'BrSetupRetry'); link(stl['ReturnValue'], bst['Condition']); ex(gp, bst, 'else')
 sta = g.call(KML + ':Add_IntInt', 'SetupTriesPlus', 250, -250, B='1'); link(stg0['SetupTries'], sta['A'])
-sst = g.setv('SetupTries', INT, 200, -700, name='SetSetupTries'); link(sta['ReturnValue'], sst['SetupTries']); ex(gp, sst, 'else')
-stm = g.call(KSL + ':K2_SetTimer', 'RetrySetup', 450, -700, FunctionName='OnLoaded', Time='1.000000', bLooping='false')
-stn = g.add(BG + 'K2Node_Self', 'MeSetupTimer', [], 300, -550); stn.pin('self', T('object', sub='self'), out=True); link(stn['self'], stm['Object'])
+sst = g.setv('SetupTries', INT, 400, -700, name='SetSetupTries'); link(sta['ReturnValue'], sst['SetupTries']); ex(bst, sst)
+stm = g.call(KSL + ':K2_SetTimer', 'RetrySetup', 650, -700, FunctionName='OnLoaded', Time='1.000000', bLooping='false')
+stn = g.add(BG + 'K2Node_Self', 'MeSetupTimer', [], 500, -550); stn.pin('self', T('object', sub='self'), out=True); link(stn['self'], stm['Object'])
 ex(sst, stm)
 
 rd = api_call(g, 'ReadModTextFile', 300, -1400, name='ReadDebugFile', modName=MOD + 'Config', Filename='debug')
@@ -278,37 +285,46 @@ ex(srd, rd)
 dfe = g.call(KSTR + ':IsEmpty', 'DebugFileEmpty', 550, -1250); link(rd['ReturnValue'], dfe['InString'])
 dfn = g.call(KML + ':Not_PreBool', 'DebugFileThere', 750, -1250); link(dfe['ReturnValue'], dfn['A'])
 sdb = g.setv('Debug', BOOL, 800, -1400, name='SetDebug'); link(dfn['ReturnValue'], sdb['Debug'])
-prev = rd
 tl = None
 if TRACE:
     tl = trace(g, 600, -1700, msg_pin=concat(g, 600, -1850, '%s TRACE %s: OnLoaded, debug.txt length ' % (MOD, BUILD),
                                                istr(g, (lambda n_: (link(rd['ReturnValue'], n_['S']), n_['ReturnValue'])[1])(g.call(KSTR + ':Len', 'DebugLen', 400, -1900)), 500, -1900, 'DebugLenStr')), name='TraceLoaded')
 if tl: ex(rd, tl); ex(tl, sdb)
 else: ex(rd, sdb)
-ga = g.call(SYS + ':GetArcoSys', 'GetSys', 1050, -1400); ex(sdb, ga)
-ssy = g.setv('Sys', SYS_T, 1300, -1400, name='SetSys'); link(ga['ReturnValue'], ssy['Sys']); ex(ga, ssy)
-pda = g.call(SYS + ':GetPrimaryDockActor', 'MainDock', 1300, -1150); link(ga['ReturnValue'], pda['self'])
-gfd = g.call('/Script/Engine.Actor:GetComponentByClass', 'FactionDockComp', 1550, -1150, ComponentClass=FDOCK)
-link(pda['ReturnValue'], gfd['self']); gfd['ReturnValue'].t = FDOCK_T
-bfd = g.branch(1600, -1400, 'BrDock'); link(is_valid(g, gfd['ReturnValue'], 1600, -950, 'DockValid'), bfd['Condition']); ex(ssy, bfd)
-bsc = bind(g, gfd['ReturnValue'], FDOCK, 'DockedShipChanged', '/Script/ProjectArco', 'ShipAtDockChanged__DelegateSignature', evS, 1850, -1400, 'BindShipChanged')
-ex(bfd, bsc)
-lok = log(g, 2150, -1400, msg='%s %s (%s): main dock found, waiting for ships' % (MOD, VERSION, BUILD), name='LogBound'); ex(bsc, lok)
-dn = g.call(KSL + ':GetDisplayName', 'MainDockName', 1700, -800); link(pda['ReturnValue'], dn['Object'])
-mno = concat(g, 1900, -800, '%s %s (%s): NO FactionDock found, main dock actor = ' % (MOD, VERSION, BUILD), dn['ReturnValue'])
-lno = log(g, 1850, -1150, msg_pin=mno, name='LogNoDock'); ex(bfd, lno, 'else')
-tn = trace(g, 1850, -650, msg_pin=mno, name='TraceNoDock')
-jd = knot(g, 2500, -1500, 'AfterBind'); link(lok['then'], jd['InputPin'])
-if tn: ex(lno, tn); link(tn['then'], jd['InputPin'])
-else: link(lno['then'], jd['InputPin'])
-pc = g.call(GS + ':GetPlayerController', 'PC', 2550, -1200)
-cw = g.add('/Script/UMGEditor.K2Node_CreateWidget', 'CreatePanel', [], 2750, -1400)
+lrd = log(g, 1000, -1400, msg='%s %s (%s): ready' % (MOD, VERSION, BUILD), name='LogReady'); ex(sdb, lrd)
+ga = g.call(SYS + ':GetArcoSys', 'GetSys', 1250, -1400); ex(lrd, ga)
+ssy = g.setv('Sys', SYS_T, 1500, -1400, name='SetSys'); link(ga['ReturnValue'], ssy['Sys']); ex(ga, ssy)
+pc = g.call(GS + ':GetPlayerController', 'PC', 1550, -1200)
+cw = g.add('/Script/UMGEditor.K2Node_CreateWidget', 'CreatePanel', [], 1750, -1400)
 cw.pin('execute', EXEC); cw.pin('then', EXEC, out=True)
 cw.pin('Class', T('class', obj=cls_ref('/Script/UMG.UserWidget')), defobj=PANEL)
 cw.pin('OwningPlayer', OBJ('/Script/Engine.PlayerController'))
 cw.pin('ReturnValue', PANEL_T, out=True)
-link(pc['ReturnValue'], cw['OwningPlayer']); link(jd['OutputPin'], cw['execute'])
-spn = g.setv('Panel', PANEL_T, 3050, -1400, name='SetPanel'); link(cw['ReturnValue'], spn['Panel']); ex(cw, spn)
+link(pc['ReturnValue'], cw['OwningPlayer']); ex(ssy, cw)
+spn = g.setv('Panel', PANEL_T, 2050, -1400, name='SetPanel'); link(cw['ReturnValue'], spn['Panel']); ex(cw, spn)
+
+# spawn events: dock not bound yet -> (re)start the 0.5 s OnDockCheck timer
+bsp = g.branch(300, -3100, 'BrSpawnNeedDock'); link(g.get('DockBound', BOOL, 150, -2950, name='DockBoundGetS')['DockBound'], bsp['Condition'])
+ex(evBS, bsp); ex(evCS, bsp)
+dct = g.call(KSL + ':K2_SetTimer', 'ArmDockCheck', 550, -3100, FunctionName='OnDockCheck', Time='0.500000', bLooping='false')
+link(selfn(g, 400, -2950, 'SelfDockTimer')['self'], dct['Object']); ex(bsp, dct, 'else')
+
+# TRYDOCK
+TX, TY = 2400, -2600
+btd = g.branch(TX, TY, 'BrDockBound'); link(g.get('DockBound', BOOL, TX - 150, TY + 150, name='DockBoundGet')['DockBound'], btd['Condition'])
+ex(spn, btd); ex(evDY, btd); ex(evDC, btd)
+gsd = g.call(SYS + ':GetArcoSys', 'DockSys', TX + 250, TY); ex(btd, gsd, 'else')   # impure
+pda = g.call(SYS + ':GetPrimaryDockActor', 'MainDock', TX + 450, TY + 250); link(gsd['ReturnValue'], pda['self'])
+gfd = g.call('/Script/Engine.Actor:GetComponentByClass', 'FactionDockComp', TX + 650, TY + 250, ComponentClass=FDOCK)
+link(pda['ReturnValue'], gfd['self']); gfd['ReturnValue'].t = FDOCK_T
+bfd = g.branch(TX + 500, TY, 'BrDock'); link(is_valid(g, gfd['ReturnValue'], TX + 700, TY + 400, 'DockValid'), bfd['Condition']); ex(gsd, bfd)
+bsc = bind(g, gfd['ReturnValue'], FDOCK, 'DockedShipChanged', '/Script/ProjectArco', 'ShipAtDockChanged__DelegateSignature', evS, TX + 750, TY, 'BindShipChanged')
+ex(bfd, bsc)
+sdbd = g.setv('DockBound', BOOL, TX + 1000, TY, value='true', name='SetDockBound'); ex(bsc, sdbd)
+lok = log(g, TX + 1300, TY, msg='%s %s (%s): main dock found, waiting for ships' % (MOD, VERSION, BUILD), name='LogBound'); ex(sdbd, lok)
+lno = log(g, TX + 750, TY + 250, msg='%s: no main dock yet (new game: placed later), will check again when a building is placed or a day starts' % MOD, name='LogNoDock'); ex(bfd, lno, 'else')
+tn = trace(g, TX + 750, TY + 500, msg='%s TRACE %s: no main dock yet' % (MOD, BUILD), name='TraceNoDock')
+if tn: ex(lno, tn)
 if DIAG:
     # v4 DIAG: if the panel doesn't handle an action, its ReceiveHudAction passes it up through OnHudActionDelegate
     evP = g.custom_event('OnPanelAction', [('HudAction', STRUCT(PA + 'HudAction'))], 0, 4200)
