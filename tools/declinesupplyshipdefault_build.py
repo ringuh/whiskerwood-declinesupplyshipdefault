@@ -28,7 +28,7 @@ OUT = os.path.join(os.path.dirname(__file__), 'out')
 os.makedirs(OUT, exist_ok=True)
 MOD = 'DeclineSupplyShipDefault'
 VERSION = '1.1'
-BUILD = 'v10'
+BUILD = 'v11'
 TRACE = False   # True = ungated log lines (dev only, never in a release)
 DIAG = False    # True = v4-v7 diagnostics (panel pass-up log, panel class, 1 s re-read). Dev only.
 M = '/Game/Mods/%s/' % MOD
@@ -256,7 +256,8 @@ evS = g.custom_event('OnShipChanged', [('shipTypeAtDock', ENUM(PA + 'EShipType')
 #      places it (v9 gave up after 10 s: "NO FactionDock found"). TRYDOCK binds FactionDock.DockedShipChanged once
 #      (DockBound). Entered from: setup; OnDay (ModAPI onDayStart); OnDockCheck = one-shot 0.5 s timer armed by
 #      ModAPI onBuildingSpawned / onConstructionSpawned while the dock isn't bound yet (the timer gives the game
-#      time to register the new dock). After the dock is bound every entry stops at the first Branch.
+#      time to register the new dock). v11: also from the guard when setup already ran (onLoadingFinished at a
+#      save load comes after BeginPlay, when the save's dock exists). After the dock is bound every entry stops at the first Branch.
 evBS = g.custom_event('OnBuilt', [('Actor', ACTOR)], 0, -3200)
 evCS = g.custom_event('OnConstruction', [('Actor', ACTOR)], 0, -3000)
 evDY = g.custom_event('OnDay', [('day', INT)], 0, -2800)
@@ -313,6 +314,8 @@ link(selfn(g, 400, -2950, 'SelfDockTimer')['self'], dct['Object']); ex(bsp, dct,
 TX, TY = 2400, -2600
 btd = g.branch(TX, TY, 'BrDockBound'); link(g.get('DockBound', BOOL, TX - 150, TY + 150, name='DockBoundGet')['DockBound'], btd['Condition'])
 ex(spn, btd); ex(evDY, btd); ex(evDC, btd)
+ex(gr, btd)   # v11: already set up (e.g. onLoadingFinished after BeginPlay at a save load) -> look for the dock again;
+              # at a save load BeginPlay runs before the save's buildings exist, so the first TRYDOCK finds none
 gsd = g.call(SYS + ':GetArcoSys', 'DockSys', TX + 250, TY); ex(btd, gsd, 'else')   # impure
 pda = g.call(SYS + ':GetPrimaryDockActor', 'MainDock', TX + 450, TY + 250); link(gsd['ReturnValue'], pda['self'])
 gfd = g.call('/Script/Engine.Actor:GetComponentByClass', 'FactionDockComp', TX + 650, TY + 250, ComponentClass=FDOCK)
