@@ -32,5 +32,5 @@ Refusing the shipment costs 1 standing with the Claws, the same as when you refu
 [url=https://github.com/ringuh/whiskerwood-declinesupplyshipdefault]GitHub[/url]
 
 Created using the [url=https://github.com/Whiskerwood-Modding/Whiskerwood-Project]Whiskerwood modkit[/url]."
-	"changenote"		"1.0: first release."
+	"changenote"		"1.1: Works in a new game too. Before, it only worked after loading a save."
 }

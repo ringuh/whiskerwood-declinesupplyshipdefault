@@ -30,6 +30,7 @@ Refusing the shipment costs 1 standing with the Claws, the same as when you refu
 
 ## Version history
 
+- **1.1** – works in a new game too (before, it only worked after loading a save).
 - **1.0** – first release.
 
 ## Debug logging
@@ -81,6 +82,8 @@ Assets:
 | `Tries` | Integer |
 | `RetryPending` | Boolean |
 | `ShipType` | Integer |
+| `Ready` | Boolean |
+| `SetupTries` | Integer |
 
 If a red event wire (OnLoaded, OnShipChanged → its *Bind Event* node) pastes unconnected, drag it again.
 

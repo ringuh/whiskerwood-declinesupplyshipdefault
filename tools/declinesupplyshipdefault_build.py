@@ -27,8 +27,8 @@ from t3d import *
 OUT = os.path.join(os.path.dirname(__file__), 'out')
 os.makedirs(OUT, exist_ok=True)
 MOD = 'DeclineSupplyShipDefault'
-VERSION = '1.0'
-BUILD = 'v8'
+VERSION = '1.1'
+BUILD = 'v9'
 TRACE = False   # True = ungated log lines (dev only, never in a release)
 DIAG = False    # True = v4-v7 diagnostics (panel pass-up log, panel class, 1 s re-read). Dev only.
 M = '/Game/Mods/%s/' % MOD
@@ -234,7 +234,7 @@ open(OUT + '/BP_Startup.txt', 'w', encoding='utf-8').write(g.text())
 # =========================================================================== BP_MapLoad
 # Variables: Debug (Boolean), Sys (Arco Systems ref), Panel (Docked Boat Panel Supplies ref),
 #            Choices (Supply Ship Choice ARRAY), CurIdx (Integer), RejectIdx (Integer), Tries (Integer),
-#            RetryPending (Boolean), ShipType (Integer)
+#            RetryPending (Boolean), ShipType (Integer), Ready (Boolean), SetupTries (Integer)  <- 1.1 setup guard
 g = Graph(MAPLOAD)
 
 # ---- BeginPlay: bind onLoadingFinished
@@ -248,8 +248,33 @@ else: ex(bp, b0)
 
 # ---- OnLoaded: Debug from debug.txt; Sys; FactionDock.DockedShipChanged -> OnShipChanged; invisible panel
 evS = g.custom_event('OnShipChanged', [('shipTypeAtDock', ENUM(PA + 'EShipType'))], 0, 600)
+# ---- Setup guard (1.1): a NEW game doesn't deliver onLoadingFinished to BP_MapLoad, so setup also runs from
+#      BeginPlay. BeginPlay (after the bind) and OnLoaded enter the same guard: Ready -> nothing; (player controller
+#      AND main dock's FactionDock there) OR 10 tries used -> Ready = true -> setup once; else one-shot 1 s timer
+#      back into OnLoaded. ('Tries' is the supply-choice retry counter, so the guard uses SetupTries.)
+gr = g.branch(-300, -900, 'BrReady'); link(g.get('Ready', BOOL, -450, -750, name='ReadyGet')['Ready'], gr['Condition'])
+ex(b0, gr); ex(evL, gr)
+pcG = g.call(GS + ':GetPlayerController', 'PCGuard', -450, -600)
+pcv = g.call(KSL + ':IsValid', 'PCGuardValid', -250, -600); link(pcG['ReturnValue'], pcv['Object'])
+gsG = g.call(SYS + ':GetArcoSys', 'GuardSys', -650, -450)
+pdG = g.call(SYS + ':GetPrimaryDockActor', 'GuardMainDock', -450, -450); link(gsG['ReturnValue'], pdG['self'])
+fdG = g.call('/Script/Engine.Actor:GetComponentByClass', 'GuardFactionDock', -250, -450, ComponentClass=FDOCK)
+link(pdG['ReturnValue'], fdG['self']); fdG['ReturnValue'].t = FDOCK_T
+fdv = g.call(KSL + ':IsValid', 'GuardDockValid', -50, -450); link(fdG['ReturnValue'], fdv['Object'])
+both = g.call(KML + ':BooleanAND', 'GuardBoth', 100, -550); link(pcv['ReturnValue'], both['A']); link(fdv['ReturnValue'], both['B'])
+stg0 = g.get('SetupTries', INT, -250, -300, name='SetupTriesGet')
+used = g.call(KML + ':GreaterEqual_IntInt', 'SetupTriesUsed', -50, -300, B='10'); link(stg0['SetupTries'], used['A'])
+gok = g.call(KML + ':BooleanOR', 'GuardOk', 250, -450); link(both['ReturnValue'], gok['A']); link(used['ReturnValue'], gok['B'])
+gp = g.branch(-50, -900, 'BrCanSetup'); link(gok['ReturnValue'], gp['Condition']); ex(gr, gsG, 'else'); ex(gsG, gp)   # GetArcoSys is impure
+srd = g.setv('Ready', BOOL, 150, -900, value='true', name='SetReady'); ex(gp, srd)
+sta = g.call(KML + ':Add_IntInt', 'SetupTriesPlus', 250, -250, B='1'); link(stg0['SetupTries'], sta['A'])
+sst = g.setv('SetupTries', INT, 200, -700, name='SetSetupTries'); link(sta['ReturnValue'], sst['SetupTries']); ex(gp, sst, 'else')
+stm = g.call(KSL + ':K2_SetTimer', 'RetrySetup', 450, -700, FunctionName='OnLoaded', Time='1.000000', bLooping='false')
+stn = g.add(BG + 'K2Node_Self', 'MeSetupTimer', [], 300, -550); stn.pin('self', T('object', sub='self'), out=True); link(stn['self'], stm['Object'])
+ex(sst, stm)
+
 rd = api_call(g, 'ReadModTextFile', 300, -1400, name='ReadDebugFile', modName=MOD + 'Config', Filename='debug')
-ex(evL, rd)
+ex(srd, rd)
 dfe = g.call(KSTR + ':IsEmpty', 'DebugFileEmpty', 550, -1250); link(rd['ReturnValue'], dfe['InString'])
 dfn = g.call(KML + ':Not_PreBool', 'DebugFileThere', 750, -1250); link(dfe['ReturnValue'], dfn['A'])
 sdb = g.setv('Debug', BOOL, 800, -1400, name='SetDebug'); link(dfn['ReturnValue'], sdb['Debug'])
